@@ -1,12 +1,19 @@
 const express = require("express");
 const { MongoClient } = require("mongodb");
 require("dotenv").config();
+const admin = require("firebase-admin");
 const dotenv = require("dotenv");
 const ObjectId = require("mongodb").ObjectId;
 const cors = require("cors");
 const app = express();
 const port = process.env.PORT || 5000;
+// dorcors-portal-firebase-adminsdk-mg362-40ad64776b
 
+const serviceAccount = require("./dorcors-portal-firebase-adminsdk-mg362-40ad64776b.json");
+
+admin.initializeApp({
+  credential: admin.credential.cert(serviceAccount),
+});
 // middlewere
 app.use(cors());
 app.use(express.json());
@@ -17,18 +24,30 @@ const client = new MongoClient(uri, {
   useUnifiedTopology: true,
 });
 
+// async function varifyToken(req, res, next) {
+//   if (req?.headers?.authorization?.startsWith("bearer")) {
+//     const token = req.headers.authorization.split(" ")[1];
+//     try {
+//       const decondedUser = await admin.auth().varifyToken(token);
+//       req.decodedEmail = decondedUser.email;
+//     } catch {}
+//   }
+
+//   next();
+// }
 async function run() {
   try {
     await client.connect();
     const database = client.db("DortorPortal");
     const bookingCollection = database.collection("Book");
+    const userCollection = database.collection("Users");
     app.get("/appoinments", async (req, res) => {
       // find a specifie email first 2 lines
       const email = req.query.email;
       // find special date apoinment
-      const date = req.query.date;
-      console.log(date);
-      const query = { email: email };
+      const date = new Date(req.query.date).toLocaleDateString();
+
+      const query = { email: email, date: date };
       // basic find oparasion
       const cursor = bookingCollection.find(query);
       const result = await cursor.toArray();
@@ -39,6 +58,59 @@ async function run() {
       const result = await bookingCollection.insertOne(appoinment);
       // console.log(apponment);
       res.json(result);
+    });
+    // creat email and password with secure server
+    app.post("/users", async (req, res) => {
+      const user = req.body;
+      const result = await userCollection.insertOne(user);
+      console.log(result);
+      res.json(result);
+    });
+    // secure google
+    app.put("/users", async (req, res) => {
+      const user = req.body;
+      const filter = { email: user.email };
+      const options = { upsert: true };
+      const updateDoc = { $set: user };
+      const result = await userCollection.updateOne(filter, updateDoc, options);
+      res.json(result);
+    });
+
+    // make and admit for special banifit
+    app.put("/users/admin", async (req, res) => {
+      const user = req.body;
+      const filter = { email: user.email };
+      const updateDoc = { $set: { role: "admin" } };
+      const result = await userCollection.updateOne(filter, updateDoc);
+
+      res.json(result);
+      // const requester = req.decodedEmail;
+      // if (requester) {
+      //   const requesterAccount = await userCollection.findOne({
+      //     email: requester,
+      //   });
+      //   if (requesterAccount.role === "admin") {
+      //     const filter = { email: user.email };
+      //     const updateDoc = { $set: { role: "admin" } };
+      //     const result = await userCollection.updateOne(filter, updateDoc);
+      //     res.json(result);
+      //   }
+      // } else {
+      //   res.status(403);
+      // }
+      // console.log("put", req.decodedEmail);
+    });
+
+    // find admin email and get special role
+    app.get("/users/:email", async (req, res) => {
+      const email = req.params.email;
+      const query = { email: email };
+      const user = await userCollection.findOne(query);
+      let isAdmin = false;
+      if (user?.role === "admin") {
+        isAdmin = true;
+      }
+      res.json({ admin: isAdmin });
     });
   } finally {
     // await client.close();

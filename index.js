@@ -5,6 +5,7 @@ const admin = require("firebase-admin");
 const dotenv = require("dotenv");
 const ObjectId = require("mongodb").ObjectId;
 const cors = require("cors");
+const stripe = require("stripe")(process.env.PAYMENT_SECRATE);
 const app = express();
 const port = process.env.PORT || 5000;
 // dorcors-portal-firebase-adminsdk-mg362-40ad64776b
@@ -59,6 +60,25 @@ async function run() {
       // console.log(apponment);
       res.json(result);
     });
+    app.get("/appoinments/:id", async (req, res) => {
+      const id = req.params.id;
+      const query = { _id: ObjectId(id) };
+      const result = await bookingCollection.findOne(query);
+      res.json(result);
+    });
+    // intent update for payment method
+    app.put("/appoinments/:id", async (req, res) => {
+      const id = req.params.id;
+      const payment = req.body;
+      const filter = { _id: ObjectId(id) };
+      const updateDoc = {
+        $set: {
+          payment: payment,
+        },
+      };
+      const result = await bookingCollection.updateOne(filter, updateDoc);
+      res.json(result);
+    });
     // creat email and password with secure server
     app.post("/users", async (req, res) => {
       const user = req.body;
@@ -84,21 +104,6 @@ async function run() {
       const result = await userCollection.updateOne(filter, updateDoc);
 
       res.json(result);
-      // const requester = req.decodedEmail;
-      // if (requester) {
-      //   const requesterAccount = await userCollection.findOne({
-      //     email: requester,
-      //   });
-      //   if (requesterAccount.role === "admin") {
-      //     const filter = { email: user.email };
-      //     const updateDoc = { $set: { role: "admin" } };
-      //     const result = await userCollection.updateOne(filter, updateDoc);
-      //     res.json(result);
-      //   }
-      // } else {
-      //   res.status(403);
-      // }
-      // console.log("put", req.decodedEmail);
     });
 
     // find admin email and get special role
@@ -111,6 +116,19 @@ async function run() {
         isAdmin = true;
       }
       res.json({ admin: isAdmin });
+    });
+    // payment system strike
+    app.post("/create-payment-intent", async (req, res) => {
+      const paymentInfo = req.body;
+      const amount = paymentInfo.price * 100;
+      const paymentIntent = await stripe.paymentIntents.create({
+        currency: "usd",
+        amount: amount,
+        payment_method_types: ["card"],
+      });
+      res.json({
+        clientSecret: paymentIntent.client_secret,
+      });
     });
   } finally {
     // await client.close();
